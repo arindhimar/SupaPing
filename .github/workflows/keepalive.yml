@@ -1,0 +1,66 @@
+name: SupaPing – Supabase Keep-Alive
+
+on:
+  # Run every 3 days at midnight UTC
+  schedule:
+    - cron: "0 0 */3 * *"
+  # Allow manual trigger from the GitHub Actions UI
+  workflow_dispatch:
+
+jobs:
+  ping:
+    name: Ping Supabase Services
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Ping all services
+        run: |
+          echo "=================================================="
+          echo "  SupaPing – Keep-Alive Run"
+          echo "  Timestamp: $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+          echo "=================================================="
+
+          # Read services.json and iterate over every URL
+          SERVICES=$(jq -r '.[]' services.json)
+
+          PASS=0
+          FAIL=0
+
+          while IFS= read -r URL; do
+            echo ""
+            echo "→ Pinging: $URL"
+            echo "  Time   : $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+
+            HTTP_CODE=$(curl -s -o /tmp/ping_response.txt -w "%{http_code}" \
+              --max-time 15 \
+              --retry 3 \
+              --retry-delay 5 \
+              "$URL")
+
+            BODY=$(cat /tmp/ping_response.txt)
+
+            echo "  Status : HTTP $HTTP_CODE"
+            echo "  Body   : $BODY"
+
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+              echo "  Result : [OK]"
+              PASS=$((PASS + 1))
+            else
+              echo "  Result : [FAILED] (HTTP $HTTP_CODE)"
+              FAIL=$((FAIL + 1))
+            fi
+
+          done <<< "$SERVICES"
+
+          echo ""
+          echo "=================================================="
+          echo "  Summary: $PASS passed / $FAIL failed"
+          echo "=================================================="
+
+          # Fail the workflow step if any ping failed
+          if [ "$FAIL" -gt 0 ]; then
+            exit 1
+          fi
