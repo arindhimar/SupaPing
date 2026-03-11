@@ -10,13 +10,14 @@ jobs:
     name: Ping Supabase Services
     runs-on: ubuntu-latest
 
+    env:
+      SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Ping all services
-        env:
-          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
           echo "=================================================="
           echo "  SupaPing - Keep-Alive Run"
@@ -31,7 +32,7 @@ jobs:
             NAME=$(jq -r ".[$i].name" services.json)
             URL=$(jq -r ".[$i].url" services.json)
             METHOD=$(jq -r ".[$i].method // \"GET\"" services.json)
-            AUTH_SECRET=$(jq -r ".[$i].auth_secret // \"\"" services.json)
+            NEEDS_AUTH=$(jq -r ".[$i].auth_secret // \"\"" services.json)
 
             echo ""
             echo "-> Pinging: $NAME"
@@ -39,34 +40,27 @@ jobs:
             echo "   Method : $METHOD"
             echo "   Time   : $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
 
-            # Build curl command
-            CURL_CMD="curl -s -o /tmp/ping_response.txt -w \"%{http_code}\" \
-              --max-time 15 \
-              --retry 3 \
-              --retry-delay 5 \
-              -X $METHOD"
-
-            # Add auth headers if an auth secret key name is specified
-            if [ -n "$AUTH_SECRET" ] && [ "$AUTH_SECRET" != "null" ]; then
-              # Resolve the secret value dynamically by name
-              SECRET_VALUE=$(printenv "$AUTH_SECRET" || echo "")
-              if [ -n "$SECRET_VALUE" ]; then
-                CURL_CMD="$CURL_CMD \
-                  -H \"Authorization: Bearer $SECRET_VALUE\" \
-                  -H \"apikey: $SECRET_VALUE\""
-              fi
+            # Build the curl command based on whether auth is required
+            if [ -n "$NEEDS_AUTH" ] && [ "$NEEDS_AUTH" != "null" ] && [ -n "$SUPABASE_ANON_KEY" ]; then
+              HTTP_CODE=$(curl -s -o /tmp/ping_response.txt -w "%{http_code}" \
+                --max-time 15 \
+                --retry 3 \
+                --retry-delay 5 \
+                -X "$METHOD" \
+                -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+                -H "apikey: $SUPABASE_ANON_KEY" \
+                -H "Content-Type: application/json" \
+                --data '{"name":"Functions"}' \
+                "$URL")
+            else
+              HTTP_CODE=$(curl -s -o /tmp/ping_response.txt -w "%{http_code}" \
+                --max-time 15 \
+                --retry 3 \
+                --retry-delay 5 \
+                -X "$METHOD" \
+                "$URL")
             fi
 
-            # Add Content-Type for POST
-            if [ "$METHOD" = "POST" ]; then
-              CURL_CMD="$CURL_CMD \
-                -H \"Content-Type: application/json\" \
-                --data '{\"name\":\"Functions\"}'"
-            fi
-
-            CURL_CMD="$CURL_CMD \"$URL\""
-
-            HTTP_CODE=$(eval $CURL_CMD)
             BODY=$(cat /tmp/ping_response.txt)
 
             echo "   Status : HTTP $HTTP_CODE"
