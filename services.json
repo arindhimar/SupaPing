@@ -1,4 +1,8 @@
 [
-  "https://your-project-ref.supabase.co/functions/v1/ping",
-  "https://your-other-project-ref.supabase.co/functions/v1/ping"
+  {
+    "name": "portfolio-quotes (clever-responder)",
+    "url": "https://kevftrqpksllojjtqrvd.supabase.co/functions/v1/clever-responder",
+    "method": "POST",
+    "auth_secret": "SUPABASE_ANON_KEY"
+  }
 ]
